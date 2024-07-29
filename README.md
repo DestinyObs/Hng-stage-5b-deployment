@@ -39,7 +39,7 @@ Replace `your_server_ip_or_hostname`, `your_username`, and `your_password` with 
 
 To run the playbook, use the following command:
 ```bash
-ansible-playbook main.yaml -i inventory.cfg
+ansible-playbook main.yaml -i inventory.cfg -b
 ```
 
 ## Playbook Tasks
