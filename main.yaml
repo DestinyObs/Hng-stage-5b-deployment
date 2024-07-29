@@ -7,13 +7,31 @@
     db_admin_password: "admin_password"
     rabbitmq_password: "rabbitmq_password"
     boilerplate_name: "boilerplate_db"
+    env_variables:
+      PROFILE: "local"
+      NODE_ENV: "development"
+      PORT: "3000"
+      DB_USERNAME: "{{ db_admin_user }}"
+      DB_PASSWORD: "{{ db_admin_password }}"
+      DB_DATABASE: "{{ boilerplate_name }}"
+      DB_HOST: "localhost"
+      DB_PORT: "5432"
+      DB_ENTITIES: "dist/src/modules/**/entities/**/*.entity{.ts,.js}"
+      DB_MIGRATIONS: "dist/**/migrations/*{.ts,.js}"
+      DB_TYPE: "postgres"
+      DB_SSL: "true"
+      JWT_SECRET: "someSecrets"
+      JWT_EXPIRY_TIMEFRAME: "3600"
   tasks:
 
-    - name: Install Node.js and npm
-      apt:
+    - name: Update apt cache and install dependencies
+      ansible.builtin.apt:
         name:
           - nodejs
           - npm
+          - postgresql
+          - rabbitmq-server
+          - nginx
         state: present
         update_cache: yes
 
@@ -53,12 +71,6 @@
         dest: /opt/stage_5b
         version: devops
 
-    - name: Install PostgreSQL
-      apt:
-        name: postgresql
-        state: present
-        update_cache: yes
-
     - name: Ensure PostgreSQL service is running
       ansible.builtin.systemd:
         name: postgresql
@@ -67,41 +79,24 @@
 
     - name: Create PostgreSQL database
       ansible.builtin.shell:
-        cmd: |
-          sudo -u postgres psql -c "CREATE DATABASE {{ boilerplate_name }};"
+        cmd: sudo -u postgres psql -c "CREATE DATABASE {{ boilerplate_name }};"
+        creates: /var/lib/postgresql/data/{{ boilerplate_name }}
 
     - name: Ensure /var/secrets directory exists
       ansible.builtin.file:
         path: /var/secrets
         state: directory
-        owner: hng
-        group: hng
         mode: '0700'
 
     - name: Save PostgreSQL credentials
       ansible.builtin.copy:
         dest: /var/secrets/pg_pw.txt
         content: "{{ db_admin_password }}"
-        owner: hng
-        group: hng
         mode: '0600'
-
-    - name: Install RabbitMQ
-      apt:
-        name: rabbitmq-server
-        state: present
-        update_cache: yes
 
     - name: Set RabbitMQ default user and password
       ansible.builtin.shell:
-        cmd: |
-          rabbitmqctl change_password guest {{ rabbitmq_password }}
-
-    - name: Install Nginx
-      apt:
-        name: nginx
-        state: present
-        update_cache: yes
+        cmd: rabbitmqctl change_password guest {{ rabbitmq_password }}
 
     - name: Ensure Nginx directories exist
       ansible.builtin.file:
@@ -128,8 +123,6 @@
             }
           }
         dest: /etc/nginx/sites-available/stage_5b
-        owner: root
-        group: root
         mode: '0644'
 
     - name: Enable Nginx configuration
@@ -152,8 +145,6 @@
       ansible.builtin.file:
         path: /var/log/stage_5b
         state: directory
-        owner: hng
-        group: hng
         mode: '0755'
 
     - name: Set up logging for stderr
@@ -177,6 +168,32 @@
       ansible.builtin.npm:
         name: '@nestjs/cli'
         global: yes
+
+    - name: Install NestJS core dependencies
+      ansible.builtin.shell:
+        cmd: |
+          cd /opt/stage_5b
+          npm install @nestjs/core @nestjs/common @nestjs/platform-express @nestjs/passport @nestjs/mongoose @nestjs/swagger reflect-metadata
+
+    - name: Create .env file
+      ansible.builtin.copy:
+        dest: /opt/stage_5b/.env
+        content: |
+          PROFILE={{ env_variables.PROFILE }}
+          NODE_ENV={{ env_variables.NODE_ENV }}
+          PORT={{ env_variables.PORT }}
+          DB_USERNAME={{ env_variables.DB_USERNAME }}
+          DB_PASSWORD={{ env_variables.DB_PASSWORD }}
+          DB_DATABASE={{ env_variables.DB_DATABASE }}
+          DB_HOST={{ env_variables.DB_HOST }}
+          DB_PORT={{ env_variables.DB_PORT }}
+          DB_ENTITIES={{ env_variables.DB_ENTITIES }}
+          DB_MIGRATIONS={{ env_variables.DB_MIGRATIONS }}
+          DB_TYPE={{ env_variables.DB_TYPE }}
+          DB_SSL={{ env_variables.DB_SSL }}
+          JWT_SECRET={{ env_variables.JWT_SECRET }}
+          JWT_EXPIRY_TIMEFRAME={{ env_variables.JWT_EXPIRY_TIMEFRAME }}
+        mode: '0600'
 
     - name: Build the application
       ansible.builtin.shell:
