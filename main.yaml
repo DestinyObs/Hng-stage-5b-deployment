@@ -159,6 +159,21 @@
           echo '*.* /var/log/stage_5b/out.log' >> /etc/rsyslog.d/stage_5b.conf
           systemctl restart rsyslog
 
+    - name: Clean npm cache
+      ansible.builtin.shell:
+        cmd: npm cache clean --force
+        chdir: /opt/stage_5b
+
+    - name: Remove node_modules if it exists
+      ansible.builtin.file:
+        path: /opt/stage_5b/node_modules
+        state: absent
+
+    - name: Remove package-lock.json if it exists
+      ansible.builtin.file:
+        path: /opt/stage_5b/package-lock.json
+        state: absent
+
     - name: Install PM2 globally
       ansible.builtin.npm:
         name: pm2
