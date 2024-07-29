@@ -11,9 +11,9 @@
       PROFILE: "local"
       NODE_ENV: "development"
       PORT: "3000"
-      DB_USERNAME: "{{ db_admin_user }}"
-      DB_PASSWORD: "{{ db_admin_password }}"
-      DB_DATABASE: "{{ boilerplate_name }}"
+      DB_USERNAME: "{{db_admin_user}}"
+      DB_PASSWORD: "{{db_admin_password}}"
+      DB_DATABASE: "{{boilerplate_name}}"
       DB_HOST: "localhost"
       DB_PORT: "5432"
       DB_ENTITIES: "dist/src/modules/**/entities/**/*.entity{.ts,.js}"
@@ -169,11 +169,10 @@
         name: '@nestjs/cli'
         global: yes
 
-    - name: Install NestJS core dependencies
+    - name: Install @nestjs/swagger
       ansible.builtin.shell:
-        cmd: |
-          cd /opt/stage_5b
-          npm install @nestjs/core @nestjs/common @nestjs/platform-express @nestjs/passport @nestjs/mongoose @nestjs/swagger reflect-metadata
+        cmd: npm install @nestjs/swagger
+        chdir: /opt/stage_5b
 
     - name: Create .env file
       ansible.builtin.copy:
