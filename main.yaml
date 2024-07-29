@@ -169,9 +169,9 @@
         name: '@nestjs/cli'
         global: yes
 
-    - name: Install @nestjs/swagger
+    - name: Install project dependencies
       ansible.builtin.shell:
-        cmd: npm install @nestjs/swagger
+        cmd: npm install
         chdir: /opt/stage_5b
 
     - name: Create .env file
