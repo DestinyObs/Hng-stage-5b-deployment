@@ -1,0 +1,191 @@
+---
+- name: Setup Stage 5b Environment
+  hosts: hng
+  become: yes
+  vars:
+    db_admin_user: "postgres"
+    db_admin_password: "admin_password"
+    rabbitmq_password: "rabbitmq_password"
+    boilerplate_name: "boilerplate_db"
+  tasks:
+
+    - name: Install Node.js and npm
+      apt:
+        name:
+          - nodejs
+          - npm
+        state: present
+        update_cache: yes
+
+    - name: Create hng user with sudo privileges
+      ansible.builtin.user:
+        name: hng
+        state: present
+        shell: /bin/bash
+        groups: sudo
+
+    - name: Ensure /opt directory exists
+      ansible.builtin.file:
+        path: /opt
+        state: directory
+
+    - name: Change ownership of /opt directory
+      ansible.builtin.file:
+        path: /opt
+        state: directory
+        owner: hng
+        group: hng
+
+    - name: Create destination directory for cloning
+      ansible.builtin.file:
+        path: /opt/stage_5b
+        state: directory
+        owner: hng
+        group: hng
+
+    - name: Add /opt/stage_5b as a safe directory for Git
+      ansible.builtin.shell:
+        cmd: git config --global --add safe.directory /opt/stage_5b
+
+    - name: Clone the DevOps branch of the repository
+      ansible.builtin.git:
+        repo: 'https://github.com/hngprojects/hng_boilerplate_nestjs'
+        dest: /opt/stage_5b
+        version: devops
+
+    - name: Install PostgreSQL
+      apt:
+        name: postgresql
+        state: present
+        update_cache: yes
+
+    - name: Ensure PostgreSQL service is running
+      ansible.builtin.systemd:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Create PostgreSQL database
+      ansible.builtin.shell:
+        cmd: |
+          sudo -u postgres psql -c "CREATE DATABASE {{ boilerplate_name }};"
+
+    - name: Ensure /var/secrets directory exists
+      ansible.builtin.file:
+        path: /var/secrets
+        state: directory
+        owner: hng
+        group: hng
+        mode: '0700'
+
+    - name: Save PostgreSQL credentials
+      ansible.builtin.copy:
+        dest: /var/secrets/pg_pw.txt
+        content: "{{ db_admin_password }}"
+        owner: hng
+        group: hng
+        mode: '0600'
+
+    - name: Install RabbitMQ
+      apt:
+        name: rabbitmq-server
+        state: present
+        update_cache: yes
+
+    - name: Set RabbitMQ default user and password
+      ansible.builtin.shell:
+        cmd: |
+          rabbitmqctl change_password guest {{ rabbitmq_password }}
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+        update_cache: yes
+
+    - name: Ensure Nginx directories exist
+      ansible.builtin.file:
+        path: /etc/nginx/sites-available
+        state: directory
+
+    - name: Ensure Nginx sites-enabled directory exists
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled
+        state: directory
+
+    - name: Configure Nginx
+      ansible.builtin.copy:
+        content: |
+          server {
+            listen 80;
+            server_name _;
+            location / {
+              proxy_pass http://127.0.0.1:3000;
+              proxy_set_header Host $host;
+              proxy_set_header X-Real-IP $remote_addr;
+              proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto $scheme;
+            }
+          }
+        dest: /etc/nginx/sites-available/stage_5b
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enable Nginx configuration
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/stage_5b
+        dest: /etc/nginx/sites-enabled/stage_5b
+        state: link
+
+    - name: Remove default Nginx configuration
+      ansible.builtin.file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Restart Nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+
+    - name: Ensure /var/log/stage_5b directory exists
+      ansible.builtin.file:
+        path: /var/log/stage_5b
+        state: directory
+        owner: hng
+        group: hng
+        mode: '0755'
+
+    - name: Set up logging for stderr
+      ansible.builtin.shell:
+        cmd: |
+          echo '*.* /var/log/stage_5b/error.log' >> /etc/rsyslog.d/stage_5b.conf
+          systemctl restart rsyslog
+
+    - name: Set up logging for stdout
+      ansible.builtin.shell:
+        cmd: |
+          echo '*.* /var/log/stage_5b/out.log' >> /etc/rsyslog.d/stage_5b.conf
+          systemctl restart rsyslog
+
+    - name: Install PM2 globally
+      ansible.builtin.npm:
+        name: pm2
+        global: yes
+
+    - name: Install NestJS CLI globally
+      ansible.builtin.npm:
+        name: '@nestjs/cli'
+        global: yes
+
+    - name: Build the application
+      ansible.builtin.shell:
+        cmd: |
+          cd /opt/stage_5b
+          npm run build
+
+    - name: Run the application in production using PM2
+      ansible.builtin.shell:
+        cmd: |
+          cd /opt/stage_5b
+          pm2 start dist/src/main.js --name stage_5b --log /var/log/stage_5b/out.log --error /var/log/stage_5b/error.log
