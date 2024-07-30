@@ -159,11 +159,6 @@
           echo '*.* /var/log/stage_5b/out.log' >> /etc/rsyslog.d/stage_5b.conf
           systemctl restart rsyslog
 
-    - name: Install PM2 globally
-      ansible.builtin.npm:
-        name: pm2
-        global: yes
-
     - name: Install NestJS CLI globally
       ansible.builtin.npm:
         name: '@nestjs/cli'
@@ -173,10 +168,6 @@
       ansible.builtin.shell:
         cmd: npm install
         chdir: /opt/stage_5b
-        # Add this to capture any potential issues
-        # and ensure that npm install completes successfully
-        # if needed for debugging
-        # creates: /opt/stage_5b/node_modules
 
     - name: Create .env file
       ansible.builtin.copy:
@@ -204,8 +195,36 @@
           cd /opt/stage_5b
           npm run build --verbose
 
-    - name: Run the application in production using PM2
-      ansible.builtin.shell:
-        cmd: |
-          cd /opt/stage_5b
-          pm2 start dist/src/main.js --name stage_5b --log /var/log/stage_5b/out.log --error /var/log/stage_5b/error.log
+    - name: Create systemd service file for the application
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/stage_5b.service
+        content: |
+          [Unit]
+          Description=Stage 5b Application
+          After=network.target
+
+          [Service]
+          ExecStart=/usr/bin/node /opt/stage_5b/dist/src/main.js
+          WorkingDirectory=/opt/stage_5b
+          EnvironmentFile=/opt/stage_5b/.env
+          Restart=always
+          User=hng
+          Group=hng
+          StandardOutput=syslog
+          StandardError=syslog
+          SyslogIdentifier=stage_5b
+          Environment=NODE_ENV=development
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: '0644'
+
+    - name: Reload systemd to apply the new service
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: Ensure stage_5b service is started
+      ansible.builtin.systemd:
+        name: stage_5b
+        state: started
+        enabled: yes
