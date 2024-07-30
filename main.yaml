@@ -166,7 +166,7 @@
 
     - name: Install project dependencies
       ansible.builtin.shell:
-        cmd: npm install
+        cmd: npm ci --verbose
         chdir: /opt/stage_5b
 
     - name: Create .env file
